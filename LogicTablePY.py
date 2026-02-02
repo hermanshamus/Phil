@@ -169,6 +169,51 @@ class Parser:
             return Var(tok)
 
 
+# ----------- Premise Sperator -------------------
+
+def split_premises(statement):
+    """
+    Split a statement into premises and conclusion if 'therefore' is present. Using Commas and |- as well.
+    Returns a tuple (premises_list, conclusion) or just premises_list if no conclusion.
+    """
+
+    parts = [] # Collected parts
+    depth = 0 # Parenthesis depth
+    start = 0 # Start index of current part
+    i = 0
+
+    while i < len(statement):
+        char = statement[i] # Current character
+
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+
+        # Check for 'therefore' or '|-'
+        
+        if depth == 0:
+            if statement.startswith('therefore', i):
+                parts.append(statement[start:i].strip())
+                conclusion = statement[i + len('therefore'):].strip()
+                return parts, conclusion
+            elif statement.startswith('|-', i):
+                parts.append(statement[start:i].strip())
+                conclusion = statement[i + len('|-'):].strip()
+                return parts, conclusion
+            elif char == ',':
+                parts.append(statement[start:i].strip())
+                start = i + 1
+
+        i += 1
+
+    tail = statement[start:].strip() # Remaining part after last split
+    if tail:
+        parts.append(tail)
+
+    return parts 
+        
+
 # ----------- Sub-expression collector -----------
 
 def collect_subexpressions(expr, collected=None):
@@ -193,35 +238,48 @@ def collect_subexpressions(expr, collected=None):
 
     return collected
 
+# ----------- Helpers -----------
+
+def and_all(exprs):
+    result = exprs[0]
+    for e in exprs[1:]:
+        result = And(result, e)
+    return result
+
 
 # ----------- Truth table generator -----------
 
-def truth_table(expr):
-    variables = sorted(expr.vars())
-    subexprs = collect_subexpressions(expr)
+def truth_table_multiple(exprs):
+    # Collect all variables across all premises
+    variables = sorted(set().union(*(e.vars() for e in exprs)))
 
-    # Column headers
-    headers = variables + [str(e) for e in subexprs]
+    headers = variables + [str(e) for e in exprs] + ["ALL TRUE"]
     col_width = max(len(h) for h in headers) + 2
+
     header_line = " | ".join(h.center(col_width) for h in headers)
     print(header_line)
     print("-" * len(header_line))
 
-    # Generate all truth assignments
     for values in itertools.product([False, True], repeat=len(variables)):
         env = dict(zip(variables, values))
         row = []
 
-        # Variable values
-        for var in variables:
-            row.append("T" if env[var] else "F")
+        # Variable columns
+        for v in variables:
+            row.append("T" if env[v] else "F")
 
-        # Sub-expression values
-        for node in subexprs:
-            row.append("T" if node.evaluate(env) else "F")
+        # Premise columns
+        premise_vals = []
+        for e in exprs:
+            val = e.evaluate(env)
+            premise_vals.append(val)
+            row.append("T" if val else "F")
 
-        # Print row
+        # All-premises-true column
+        row.append("T" if all(premise_vals) else "F")
+
         print(" | ".join(r.center(col_width) for r in row))
+
 
 
 # ----------- Main -----------
@@ -229,14 +287,22 @@ def truth_table(expr):
 if __name__ == "__main__":
     print("Logic Statement Truth Table Generator")
     print("Operators: ~ (NOT), & (AND), | (OR), -> (IMPLIES), <-> (IFF)")
-    statement = input("Enter logic statement: ")
-    tokens = tokenize(statement)
-    expr = Parser(tokens).parse()
-    truth_table(expr)
 
-    print("\nDone. Press R to run another statement.")
-    print("Press Enter to exit.")
-    if input().strip().lower() == 'r':
-        import os
-        os.system('python ' + __file__)  # Restart the script
-    input()  # Wait for user to press Enter before exiting
+    statement = input("Enter logic statement: ")
+
+    split = split_premises(statement)
+
+    # Multiple premises, no conclusion
+    if isinstance(split, list):
+        premises = []
+        for p in split:
+            tokens = tokenize(p)
+            premises.append(Parser(tokens).parse())
+
+        expr = and_all(premises)
+        truth_table_multiple(premises)
+
+
+    print("\nPress Enter to exit.")
+    input()
+
