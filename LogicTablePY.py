@@ -303,6 +303,12 @@ if __name__ == "__main__":
         truth_table_multiple(premises)
 
 
-    print("\nPress Enter to exit.")
-    input()
+    print( "Press R to run again or any other key to exit. ")
+
+    if input().lower() == 'r':
+        import os
+        os.system('python ' + __file__)
+    else:
+        print("Exiting...")
+        exit()
 
